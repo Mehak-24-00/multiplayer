@@ -1,0 +1,8 @@
+{
+    "name": "multiplayer game",
+    "forwardPorts": [5000],
+    "postCreateCommand": "pip install -r requirements.txt",
+    "portsAttributes": {
+        "5000": { "label": "game server", "onAutoForward": "openBrowser" }
+    }
+}
