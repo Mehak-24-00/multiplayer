@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Simple 3D Player Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #87ceeb;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      background: rgba(255,255,255,0.9);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    Move with <b>W A S D</b> or <b>Arrow Keys</b><br>
+    Press <b>Space</b> to jump over blocks
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 30, 100);
+
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      200
+    );
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // lights
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(20, 30, 10);
+    sun.castShadow = true;
+    scene.add(sun);
+
+    // ground
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(120, 120),
+      new THREE.MeshLambertMaterial({ color: 0x4f9d49 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // grid
+    const grid = new THREE.GridHelper(120, 60, 0x000000, 0x000000);
+    scene.add(grid);
+
+    // player
+    const player = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 24, 24),
+      new THREE.MeshStandardMaterial({ color: 0x3366ff })
+    );
+    player.position.set(0, 1, 0);
+    player.castShadow = true;
+    scene.add(player);
+
+    // environment objects
+    const obstacles = [];
+
+    function addTree(x, z) {
+  // trunk (taller)
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.6, 0.6, 6),
+    new THREE.MeshLambertMaterial({ color: 0x8b5a2b })
+  );
+  trunk.position.set(x, 3, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  // leaves (bigger)
+  const leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(3, 16, 16),
+    new THREE.MeshLambertMaterial({ color: 0x228b22 })
+  );
+  leaves.position.set(x, 7, z);
+  leaves.castShadow = true;
+  scene.add(leaves);
+
+  // collision (large so player can't pass through)
+  obstacles.push({ x, z, r: 3.5, jumpHeight: 99 });
+}
+
+    function addRock(x, z, size = 1.5, height = 1) {
+      const rock = new THREE.Mesh(
+        new THREE.BoxGeometry(size, height, size),
+        new THREE.MeshLambertMaterial({ color: 0x777777 })
+      );
+      rock.position.set(x, height / 2, z);
+      rock.castShadow = true;
+      scene.add(rock);
+
+      obstacles.push({
+        x,
+        z,
+        r: size * 0.8,
+        jumpHeight: height
+      });
+    }
+
+    function addHouse(x, z) {
+  const baseWidth = 5;   // 5x ball size
+  const baseHeight = 4;
+  const baseDepth = 5;
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(baseWidth, baseHeight, baseDepth),
+    new THREE.MeshLambertMaterial({ color: 0xd2b48c })
+  );
+  base.position.set(x, baseHeight / 2, z);
+  base.castShadow = true;
+  scene.add(base);
+
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(4, 3, 4),
+    new THREE.MeshLambertMaterial({ color: 0x8b0000 })
+  );
+  roof.position.set(x, baseHeight + 1.5, z);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  scene.add(roof);
+
+  // bigger collision area
+  obstacles.push({
+    x,
+    z,
+    r: 3.8,
+    jumpHeight: 99
+  });
+}
+
+    // MANY TREES
+    const treePositions = [
+      [8, 8], [-10, 6], [12, -7], [-7, -10], [18, 10], [-18, 14],
+      [20, -12], [-20, -15], [28, 5], [-28, 8], [30, -10], [-30, -8],
+      [14, 24], [-14, 26], [24, 18], [-24, 20], [35, 12], [-35, 14]
+    ];
+    treePositions.forEach(([x, z]) => addTree(x, z));
+
+    // MANY HOUSES
+    const housePositions = [
+      [-12, -2], [10, 14], [22, 22], [-24, 18], [28, -18], [-30, -20],
+      [5, 28], [-6, -30], [34, 0], [-36, 4]
+    ];
+    housePositions.forEach(([x, z], i) => {
+      const w = 3 + (i % 3) * 0.5;
+      const h = 2.5 + (i % 2) * 0.3;
+      const d = 3 + ((i + 1) % 3) * 0.4;
+      addHouse(x, z, w, h, d);
+    });
+
+    // MANY BLOCKS / ROCKS
+    const rockPositions = [
+      [4, -4], [-4, 10], [14, 2], [7, -15], [-8, -18], [16, 16],
+      [-16, 12], [24, -6], [-22, -4], [30, 10], [-30, 16], [12, 30],
+      [-12, 32], [0, 20], [20, 0], [-20, 0], [6, 6], [-6, 6], [6, -6], [-6, -6]
+    ];
+    rockPositions.forEach(([x, z], i) => {
+      const size = 1.5 + (i % 3) * 0.5;
+      const height = 1 + (i % 2) * 0.8;
+      addRock(x, z, size, height);
+    });
+
+    const keys = {};
+    let jumpVelocity = 0;
+    let isOnGround = true;
+    const gravity = 0.015;
+    const jumpStrength = 0.32;
+
+    document.addEventListener("keydown", (e) => {
+      const key = e.key.toLowerCase();
+      keys[key] = true;
+
+      if (e.code === "Space" && isOnGround) {
+        jumpVelocity = jumpStrength;
+        isOnGround = false;
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    const SPEED = 0.18;
+    const BOUNDS = 55;
+    const PLAYER_RADIUS = 1;
+
+    function collides(nextX, nextZ) {
+      for (const o of obstacles) {
+        const dx = nextX - o.x;
+        const dz = nextZ - o.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < o.r + PLAYER_RADIUS) {
+          // if player is high enough, allow jumping over small blocks
+          if (player.position.y > o.jumpHeight + 0.8) {
+            continue;
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function movePlayer() {
+      let moveX = 0;
+      let moveZ = 0;
+
+      if (keys["w"] || keys["arrowup"]) moveZ -= SPEED;
+      if (keys["s"] || keys["arrowdown"]) moveZ += SPEED;
+      if (keys["a"] || keys["arrowleft"]) moveX -= SPEED;
+      if (keys["d"] || keys["arrowright"]) moveX += SPEED;
+
+      let nextX = player.position.x + moveX;
+      let nextZ = player.position.z + moveZ;
+
+      nextX = Math.max(-BOUNDS, Math.min(BOUNDS, nextX));
+      nextZ = Math.max(-BOUNDS, Math.min(BOUNDS, nextZ));
+
+      if (!collides(nextX, player.position.z)) {
+        player.position.x = nextX;
+      }
+
+      if (!collides(player.position.x, nextZ)) {
+        player.position.z = nextZ;
+      }
+    }
+
+    function updateJump() {
+      if (!isOnGround) {
+        player.position.y += jumpVelocity;
+        jumpVelocity -= gravity;
+
+        if (player.position.y <= 1) {
+          player.position.y = 1;
+          jumpVelocity = 0;
+          isOnGround = true;
+        }
+      }
+    }
+
+    function updateCamera() {
+      const targetPos = new THREE.Vector3(
+        player.position.x,
+        player.position.y + 8,
+        player.position.z + 12
+      );
+
+      camera.position.lerp(targetPos, 0.08);
+      camera.lookAt(player.position.x, player.position.y, player.position.z);
+    }
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      movePlayer();
+      updateJump();
+      updateCamera();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
